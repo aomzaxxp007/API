@@ -1,0 +1,276 @@
+[index (5).html](https://github.com/user-attachments/files/30701429/index.5.html)
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เมนูอาหารของเรา</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: #0f0f14;
+    color: #eee;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #888;
+    margin-bottom: 32px;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .form-card {
+    background: #1a1a22;
+    border: 1px solid #2a2a35;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 32px;
+  }
+  .form-card h2 {
+    margin-top: 0;
+    font-size: 18px;
+  }
+  .form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  input[type="text"], input[type="number"] {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #0f0f14;
+    color: #eee;
+    font-size: 14px;
+  }
+  label.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #ccc;
+  }
+  button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #10b981;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: #0ea371; }
+  button:disabled { background: #555; cursor: not-allowed; }
+  .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .menu-card {
+    background: #1a1a22;
+    border: 1px solid #2a2a35;
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+  }
+  .menu-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 17px;
+  }
+  .menu-card .price {
+    font-size: 20px;
+    font-weight: 700;
+    color: #10b981;
+  }
+  .badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+  }
+  .badge.available { background: #103d2a; color: #4ade80; }
+  .badge.unavailable { background: #3d1010; color: #f87171; }
+  .status {
+    text-align: center;
+    color: #888;
+    padding: 20px;
+  }
+  .error {
+    background: #3d1010;
+    color: #f87171;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🍽️ เมนูอาหารของเรา</h1>
+  <p class="subtitle">ดึงข้อมูลสดจาก Supabase</p>
+
+  <div id="errorBox" class="error"></div>
+
+  <div class="form-card">
+    <h2>➕ เพิ่มเมนูใหม่</h2>
+    <div class="form-row">
+      <input type="text" id="nameInput" placeholder="ชื่อเมนู เช่น ผัดไทย">
+      <input type="number" id="priceInput" placeholder="ราคา" min="0" step="1">
+      <label class="checkbox">
+        <input type="checkbox" id="availableInput" checked>
+        มีขาย
+      </label>
+      <button id="addBtn" onclick="addMenu()">เพิ่มเมนู</button>
+    </div>
+  </div>
+
+  <div id="menuList" class="status">กำลังโหลดเมนู...</div>
+</div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    const box = document.getElementById("errorBox");
+    box.textContent = "เกิดข้อผิดพลาด: " + e.message;
+    box.style.display = "block";
+  });
+
+  // ตั้งค่า Supabase connection
+  const SUPABASE_URL = "https://yhaksaikntrvwfyfxmmc.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_4hEmknXZe14zjyTq11XnBQ_rHLY9YEH";
+
+  if (typeof window.supabase === "undefined") {
+    document.getElementById("menuList").className = "status";
+    document.getElementById("menuList").textContent = "";
+    document.getElementById("errorBox").textContent =
+      "โหลดไลบรารี Supabase จาก CDN ไม่สำเร็จ กรุณาตรวจสอบว่าเชื่อมต่ออินเทอร์เน็ตอยู่ แล้วลองรีเฟรชหน้านี้ใหม่ (กด Ctrl+Shift+R)";
+    document.getElementById("errorBox").style.display = "block";
+    throw new Error("supabase-js failed to load from CDN");
+  }
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  function showError(msg) {
+    const box = document.getElementById("errorBox");
+    box.textContent = msg;
+    box.style.display = "block";
+  }
+
+  function clearError() {
+    document.getElementById("errorBox").style.display = "none";
+  }
+
+  let menuItems = []; // เก็บรายการเมนูไว้ในหน่วยความจำ เพื่ออัปเดตหน้าจอได้ทันที
+
+  function renderMenu() {
+    const listEl = document.getElementById("menuList");
+
+    if (!menuItems || menuItems.length === 0) {
+      listEl.className = "status";
+      listEl.textContent = "ยังไม่มีเมนูในระบบ ลองเพิ่มเมนูแรกได้เลย!";
+      return;
+    }
+
+    listEl.className = "menu-grid";
+    listEl.innerHTML = menuItems.map(item => `
+      <div class="menu-card">
+        <h3>${escapeHtml(item.name || "(ไม่มีชื่อ)")}</h3>
+        <div class="price">${item.price != null ? "฿" + item.price : "-"}</div>
+        <span class="badge ${item.is_available ? "available" : "unavailable"}">
+          ${item.is_available ? "มีขาย" : "หมด"}
+        </span>
+      </div>
+    `).join("");
+  }
+
+  async function loadMenu() {
+    const listEl = document.getElementById("menuList");
+    listEl.className = "status";
+    listEl.textContent = "กำลังโหลดเมนู...";
+
+    const { data, error } = await supabaseClient
+      .from("menu")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      showError("โหลดข้อมูลไม่สำเร็จ: " + error.message);
+      listEl.textContent = "";
+      return;
+    }
+    clearError();
+
+    menuItems = data || [];
+    renderMenu();
+  }
+
+  async function addMenu() {
+    const name = document.getElementById("nameInput").value.trim();
+    const price = document.getElementById("priceInput").value;
+    const available = document.getElementById("availableInput").checked;
+    const btn = document.getElementById("addBtn");
+
+    if (!name) {
+      showError("กรุณากรอกชื่อเมนู");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "กำลังเพิ่ม...";
+
+    const { data, error } = await supabaseClient
+      .from("menu")
+      .insert({
+        name: name,
+        price: price ? Number(price) : null,
+        is_available: available
+      })
+      .select()
+      .single();
+
+    btn.disabled = false;
+    btn.textContent = "เพิ่มเมนู";
+
+    if (error) {
+      showError("เพิ่มเมนูไม่สำเร็จ: " + error.message);
+      return;
+    }
+
+    clearError();
+    document.getElementById("nameInput").value = "";
+    document.getElementById("priceInput").value = "";
+    document.getElementById("availableInput").checked = true;
+
+    // แสดงเมนูที่เพิ่งเพิ่มขึ้นบนสุดทันที ไม่ต้องรอโหลดใหม่
+    if (data) {
+      menuItems.unshift(data);
+      renderMenu();
+    } else {
+      // เผื่อกรณี select() คืนค่าไม่ได้ (เช่น policy ไม่อนุญาตให้อ่านหลัง insert)
+      loadMenu();
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  loadMenu();
+</script>
+</body>
+</html>
